@@ -39,8 +39,9 @@
     import {TransformGizmoEngine} from "./js/utils/utils_transform_gizmo.js";
     import {optimization_bfgs} from "./js/utils/utils_optimization.js";
     import {sub_matrix_matrix} from "./js/utils/utils_math.js";
+    import {spawn_static_parametric_curve} from "./js/utils/utils_three.js";
 
-    export function make_SE3_from_exponential(axis, angle) {
+    function make_SE3_from_exponential(axis, angle) {
         let exponential_coords = mul_matrix_scalar(axis, angle);
         let [a, b, c] = exponential_coords;
         let beta = frobenius_norm_matrix(exponential_coords);
@@ -68,8 +69,7 @@
             [0, 0, 0, 1]
         ];
     }
-
-    export function draw_SE3_pose(engine, T) {
+    function draw_SE3_pose(engine, T) {
         let p = [T[0][3], T[1][3], T[2][3]];
         let R = [
             [T[0][0], T[0][1], T[0][2]],
@@ -84,23 +84,16 @@
         engine.draw_debug_line(p, add_matrix_matrix(p, y), true, 0.003, 0x00ff00, 1.0);
         engine.draw_debug_line(p, add_matrix_matrix(p, z), true, 0.003, 0x0000ff, 1.0);
     }
-
-    export function set_robot(engine, robot, output_poses, coord_displays) {
+    function set_robot(engine, robot, output_poses) {
         let kh = robot.kinematic_hierarchy;
         kh.forEach(layer => {
             layer.forEach(link_idx => {
                 let curr_pose = output_poses[link_idx];
-                if(coord_displays[link_idx]) {
-                    draw_SE3_pose(engine, curr_pose);
-                    robot.set_link_mesh_visibility(engine, link_idx, settings.display_mesh);
-                    robot.set_link_wireframe_visibility(engine, link_idx, settings.display_wireframe);
-                }
                 robot.set_link_mesh_pose_from_SE3_matrix(engine, link_idx, curr_pose);
             });
         });
     }
-
-    export function forward_kinematics(state) {
+    function forward_kinematics(state, robot) {
         let joints = robot.joints;
         let links = robot.links;
         let kh = robot.kinematic_hierarchy;
@@ -163,216 +156,195 @@
         });
         return output_poses;
     }
-
-    export function position_loss(target) {
+    function position_loss(target, robot) {
         function f(state) {
-            let out_poses = forward_kinematics(state);
+            let out_poses = forward_kinematics(state, robot);
             let t_out = [
                 out_poses[19][0][3],
                 out_poses[19][1][3],
                 out_poses[19][2][3]
             ];
-            return frobenius_norm_matrix(sub_matrix_matrix(t_out, target)) ** 5;
+            let extra_term = 0;
+            if(Math.abs(out_poses[2][2][3]) > 0.6) {
+                extra_term = 100000;
+            }
+            return extra_term + frobenius_norm_matrix(sub_matrix_matrix(t_out, target)) ** 5;
         }
         return f;
     }
 
-    let settings = {
-        dof0: 0,
-        dof1: 0,
-        dof2: 0,
-        dof3: 0,
-        dof4: 0,
-        dof5: 0,
-        dof6: 0,
-        dof7: 0,
-        display_mesh: true,
-        display_wireframe: false,
-        display_mesh_only_with_frame: false,
-        link0: false,
-        link1: false,
-        link2: false,
-        link3: false,
-        link4: false,
-        link5: false,
-        link6: false,
-        link7: false,
-        link8: false,
-        link9: false,
-        link10: false,
-        link11: false,
-        link12: false,
-        link13: false,
-        link14: false,
-        link15: false,
-        link16: false,
-        link17: false,
-        link18: false,
-        link19: false,
-    };
-
-    let actions = {
-        reset_dofs: function() {
-            settings.dof0 = 0;
-            settings.dof1 = 0;
-            settings.dof2 = 0;
-            settings.dof3 = 0;
-            settings.dof4 = 0;
-            settings.dof5 = 0;
-            settings.dof6 = 0;
-            settings.dof7 = 0;
-            refresh_displays(gui);
-        },
-        select_all: function() {
-            settings.link0 = true;
-            settings.link1 = true;
-            settings.link2 = true;
-            settings.link3 = true;
-            settings.link4 = true;
-            settings.link5 = true;
-            settings.link6 = true;
-            settings.link7 = true;
-            settings.link8 = true;
-            settings.link9 = true;
-            settings.link10 = true;
-            settings.link11 = true;
-            settings.link12 = true;
-            settings.link13 = true;
-            settings.link14 = true;
-            settings.link15 = true;
-            settings.link16 = true;
-            settings.link17 = true;
-            settings.link18 = true;
-            settings.link19 = true;
-            refresh_displays(gui);
-        },
-        deselect_all: function() {
-            settings.link0 = false;
-            settings.link1 = false;
-            settings.link2 = false;
-            settings.link3 = false;
-            settings.link4 = false;
-            settings.link5 = false;
-            settings.link6 = false;
-            settings.link7 = false;
-            settings.link8 = false;
-            settings.link9 = false;
-            settings.link10 = false;
-            settings.link11 = false;
-            settings.link12 = false;
-            settings.link13 = false;
-            settings.link14 = false;
-            settings.link15 = false;
-            settings.link16 = false;
-            settings.link17 = false;
-            settings.link18 = false;
-            settings.link19 = false;
-            refresh_displays(gui);
+    function draw_curve(engine, parameterization, samples) {
+        let p1, p2;
+        for(let i = 0; i < samples - 1; i++) {
+            p1 = parameterization(i / samples);
+            p2 = parameterization((i + 1) / samples);
+            engine.draw_debug_line(p1, p2, false, 0.01, 0);
         }
-    };
-
-    let engine = ThreeEngine.new_default_3d();
-    let tge = new TransformGizmoEngine(engine);
-    tge.add_gizmo_SO3_matrix_and_position(engine);
-    //tge.toggle_mode();
-    let gui = get_default_lil_gui();
-
-    gui.add(settings, "display_mesh").name("Display Mesh");
-    gui.add(settings, "display_wireframe").name("Display Wireframe");
-    gui.add(settings, "display_mesh_only_with_frame").name("Display Mesh only with Frame");
-
-    let dofs = gui.addFolder('DOFs');
-    let actions_folder = gui.addFolder('Actions');
-    actions_folder.add(actions, 'reset_dofs').name('Reset');
-    actions_folder.add(actions, 'select_all').name('Select All Frames');
-    actions_folder.add(actions, 'deselect_all').name('Deselect All Frames');
-
-    // if you want to use the XArm7 robot:
-    let robot = new XArm7Robot();
-    let goal_x = 1;
-    let goal_y = 1;
-    let goal_z = 1;
-
-    // add sliders with correct degree of freedom
-    let joints = robot.joints;
-    let links = robot.links;
-    let kh = robot.kinematic_hierarchy;
-    kh.forEach(layer => {
-        layer.forEach(link_idx => {
-            if(link_idx === 0) {
-                return;
-            }
-            let curr_link = links[link_idx];
-            let parent_joint_idx = curr_link.parent_joint_idx;
-            let curr_joint = joints[parent_joint_idx];
-            let joint_type = curr_joint.joint_type_string;
-            if(joint_type === 'revolute' || joint_type === 'prismatic') {
-                let name = "dof" + curr_joint.dof_idx.toString();
-                dofs.add(settings, name, curr_joint.lower_bound, curr_joint.upper_bound).name(name);
-            }
-        });
-    });
-
-    // add link toggles
-    let links_folder = gui.addFolder('Links');
-    for(let i = 0; i < 20; i++) {
-        let curr_link = links[i];
-        let link = "link" + i.toString();
-        let link_name = "link " + i.toString() + ": " + curr_link.link_name;
-        links_folder.add(settings, link).name(link_name);
+        //engine.draw_debug_line(p2, parameterization(0), false, 0.01, 0);
     }
 
-    // this will spawn all of the robot's links at the origin
-    robot.spawn_robot(engine);
-
-    engine.animation_loop( ()  => {
-        robot.set_mesh_visibility(engine, settings.display_mesh);
-        robot.set_wireframe_visibility(engine, settings.display_wireframe);
-        if(settings.display_mesh_only_with_frame) {
-            robot.set_mesh_visibility(engine, false);
-            robot.set_wireframe_visibility(engine, false);
+    // B-spline basis function
+    function bSplineBasis(t, i, k, j) {
+        if (k === 1) {
+            if (j[i] <= t && t < j[i + 1]) return 1;
+            else return 0;
         }
 
-        let state = [
-            settings.dof0,
-            settings.dof1,
-            settings.dof2,
-            settings.dof3,
-            settings.dof4,
-            settings.dof5,
-            settings.dof6,
-            settings.dof7
-        ];
-        let coord_displays = [
-            settings.link0,
-            settings.link1,
-            settings.link2,
-            settings.link3,
-            settings.link4,
-            settings.link5,
-            settings.link6,
-            settings.link7,
-            settings.link8,
-            settings.link9,
-            settings.link10,
-            settings.link11,
-            settings.link12,
-            settings.link13,
-            settings.link14,
-            settings.link15,
-            settings.link16,
-            settings.link17,
-            settings.link18,
-            settings.link19,
-        ]
-        let poses = forward_kinematics(state);
-        set_robot(engine, robot, poses, coord_displays);
+        let A = 0, B = 0;
 
-        let x0 = state;
-        [goal_x, goal_y, goal_z] = tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1];
-        let optimal_state = optimization_bfgs(position_loss(tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1]), x0);
-        let optimal_poses = forward_kinematics(optimal_state);
-        set_robot(engine, robot, optimal_poses, coord_displays);
+        if ((j[i + k-1] - j[i]) !== 0) {
+            A = ((t - j[i]) / (j[i + k-1] - j[i])) * bSplineBasis(t, i, k - 1, j);
+        }
+
+        if ((j[i + k] - j[i + 1]) !== 0) {
+            B = ((j[i + k] - t) / (j[i + k] - j[i + 1])) * bSplineBasis(t, i + 1, k - 1, j);
+        }
+        return A + B;
+    }
+
+    // Degree k B-spline function in 3D
+    function computeBSplineValue(t, controlPoints, k) {
+        const n = controlPoints.length;
+        let j = [];
+        for(let i = 0; i < n + k; i++) {
+            j.push(i - k / 2);
+        }
+        let result = [0, 0, 0];
+        let b_k = 0;
+        for(let i = 0; i < n; i++) {
+            b_k = bSplineBasis(t, i, k, j);
+            result[0] += controlPoints[i][0] * b_k;
+            result[1] += controlPoints[i][1] * b_k;
+            result[2] += controlPoints[i][2] * b_k;
+        }
+        return result;
+    }
+
+    function circle(t) {
+        return [Math.cos(t*2*Math.PI), Math.sin(t*2*Math.PI), 1];
+    }
+
+    let settings = {
+        t: 0
+    };
+    let actions = {
+    };
+    let engine = ThreeEngine.new_default_3d();
+
+    let tge = new TransformGizmoEngine(engine);
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(0, [2, 1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(1, [1, 1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(2, [0, 1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(3, [-1, 1, 0])
+
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(4, [-2, 1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(5, [-2, 0, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(6, [-2, -1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(7, [-1, -1, 0])
+
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(8, [0, -1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(9, [1, -1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(10, [2, -1, 0])
+    tge.add_gizmo_SO3_matrix_and_position(engine);
+    tge.set_position_of_gizmo(11, [2, 0, 0])
+
+    tge.set_visibility_of_all_gizmos(engine, false);
+
+    let gui = get_default_lil_gui();
+    gui.add(settings, "t", 0, 1).name("t");
+    // if you want to use the XArm7 robot:
+    let robot1 = new XArm7Robot();
+    let robot2 = new XArm7Robot();
+
+    // this will spawn all of the robot's links at the origin
+    robot1.spawn_robot(engine);
+    robot2.spawn_robot(engine);
+
+    // determine robot initial offsets
+    robot1.joints[0].xyz_rpy_SE3_matrix[0][3] = 1;
+    robot2.joints[0].xyz_rpy_SE3_matrix[0][3] = -1;
+
+    let state1 = [0, 0, 0, 0, 0, 0, 0, 0];
+    let state2 = [0, 0, 0, 0, 0, 0, 0, 0];
+    engine.animation_loop( ()  => {
+        // let t = engine.get_time_elapsed();
+        // let target_point = circle(0.2 * t);
+        // engine.draw_debug_sphere(target_point, 0.2, 0x0000ff);
+        //
+        // robot.set_mesh_visibility(engine, true);
+        // let poses = forward_kinematics(state);
+        // set_robot(engine, robot, poses);
+        // // state = optimization_bfgs(position_loss(tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1]), state);
+        // state = optimization_bfgs(position_loss(target_point), state);
+        //
+        // draw_curve(engine, circle, 50);
+
+        // Example usage
+        let controlPoints = [
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(1)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(2)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(3)[1],
+
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(4)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(5)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(6)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(7)[1],
+
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(8)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(9)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(10)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(11)[1],
+
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(1)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(2)[1],
+            tge.get_gizmo_pose_as_SO3_matrix_and_position(3)[1],
+        ];
+
+        // function spline(t) {
+        //     const degree = 4;
+        //     const n = controlPoints.length;
+        //     let r = t / (n - 1);
+        //     let t_new = (1 - r) * (0.5 * degree) + r * (n - 1) * (0.5 * degree);
+        //     return computeBSplineValue(t_new, controlPoints, degree + 1);
+        // }
+        function spline(t) {
+            const degree = 4;
+            const n = controlPoints.length;
+            let t_new = t * (n - 1);
+            //let r =t;
+            //t_new = (1 - r) * (0.5 * degree) + r * (n - 1) * (0.5 * degree);
+            return computeBSplineValue(t_new, controlPoints, degree);
+        }
+
+        let t = engine.get_time_elapsed();
+        t %= 0.9 * (1 / 0.2);
+        let target_point = spline(0.2*(t+0.1));
+        engine.draw_debug_sphere(target_point, 0.2, 0x00ffff);
+
+        robot1.set_mesh_visibility(engine, true);
+        let poses = forward_kinematics(state1, robot1);
+        set_robot(engine, robot1, poses);
+        state1 = optimization_bfgs(position_loss(target_point, robot1), state1);
+
+        robot2.set_mesh_visibility(engine, true);
+        poses = forward_kinematics(state2, robot2);
+        set_robot(engine, robot2, poses);
+        state2 = optimization_bfgs(position_loss(target_point, robot2), state2);
+
+        draw_curve(engine, spline, 100);
 
         refresh_displays(gui);
     });
