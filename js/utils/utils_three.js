@@ -121,8 +121,8 @@ export class ThreeEngine {
         var size = 20;  // The size of the grid
         var divisions = 20; // The number of divisions (grid lines)
 
-        var gridHelper = new THREE.GridHelper(size, divisions);
-        scene.add(gridHelper);
+        //var gridHelper = new THREE.GridHelper(size, divisions);
+        //scene.add(gridHelper);
 
         spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([10.,0.,0.]), false, 0.02, 0xff0000);
         spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([0.,10.,0.]), false, 0.02, 0x00ff00);

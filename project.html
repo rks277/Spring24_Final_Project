@@ -180,7 +180,7 @@
             p2 = parameterization((i + 1) / samples);
             engine.draw_debug_line(p1, p2, false, 0.01, 0);
         }
-        //engine.draw_debug_line(p2, parameterization(0), false, 0.01, 0);
+        engine.draw_debug_line(p2, parameterization(0), false, 0.01, 0);
     }
 
     // B-spline basis function
@@ -225,7 +225,9 @@
     }
 
     let settings = {
-        t: 0
+        t: 0,
+        start: false,
+        editing: true
     };
     let actions = {
     };
@@ -259,10 +261,10 @@
     tge.add_gizmo_SO3_matrix_and_position(engine);
     tge.set_position_of_gizmo(11, [2, 0, 0])
 
-    tge.set_visibility_of_all_gizmos(engine, false);
-
     let gui = get_default_lil_gui();
     gui.add(settings, "t", 0, 1).name("t");
+    gui.add(settings, "start", 0, 1).name("Play");
+    gui.add(settings, "editing").name("Editing Mode")
     // if you want to use the XArm7 robot:
     let robot1 = new XArm7Robot();
     let robot2 = new XArm7Robot();
@@ -277,18 +279,11 @@
 
     let state1 = [0, 0, 0, 0, 0, 0, 0, 0];
     let state2 = [0, 0, 0, 0, 0, 0, 0, 0];
+    let t;
     engine.animation_loop( ()  => {
-        // let t = engine.get_time_elapsed();
-        // let target_point = circle(0.2 * t);
-        // engine.draw_debug_sphere(target_point, 0.2, 0x0000ff);
-        //
-        // robot.set_mesh_visibility(engine, true);
-        // let poses = forward_kinematics(state);
-        // set_robot(engine, robot, poses);
-        // // state = optimization_bfgs(position_loss(tge.get_gizmo_pose_as_SO3_matrix_and_position(0)[1]), state);
-        // state = optimization_bfgs(position_loss(target_point), state);
-        //
-        // draw_curve(engine, circle, 50);
+        engine.draw_debug_sphere([0,0,-1000], 1000.01, 0x137d13, 1, 100);
+
+        tge.set_visibility_of_all_gizmos(engine, settings.editing);
 
         // Example usage
         let controlPoints = [
@@ -320,19 +315,28 @@
         //     let t_new = (1 - r) * (0.5 * degree) + r * (n - 1) * (0.5 * degree);
         //     return computeBSplineValue(t_new, controlPoints, degree + 1);
         // }
-        function spline(t) {
+        function spline_2_to_n_minus_2(t) {
             const degree = 4;
             const n = controlPoints.length;
-            let t_new = t * (n - 1);
-            //let r =t;
-            //t_new = (1 - r) * (0.5 * degree) + r * (n - 1) * (0.5 * degree);
+            let t_new = t;
             return computeBSplineValue(t_new, controlPoints, degree);
         }
+        function unit_spline(t) {
+            const degree = 4;
+            const n = controlPoints.length;
+            let t_new = (1 - t) * (degree / 2) + t * (n - degree / 2);
+            return computeBSplineValue(t_new, controlPoints, degree);
+        }
+        if(settings.start) {
+            t = 0.1 * engine.get_time_elapsed();
+        } else {
+            t = settings.t;
+        }
+        // engine.draw_debug_sphere(spline_2_to_n_minus_2(2), 0.2, 0xff00ff);
+        // engine.draw_debug_sphere(spline_2_to_n_minus_2((controlPoints.length - 2)), 0.2, 0xff0000);
 
-        let t = engine.get_time_elapsed();
-        t %= 0.9 * (1 / 0.2);
-        let target_point = spline(0.2*(t+0.1));
-        engine.draw_debug_sphere(target_point, 0.2, 0x00ffff);
+        let target_point = unit_spline(t % 1);
+        engine.draw_debug_sphere(target_point, 0.1, 0x00ffff);
 
         robot1.set_mesh_visibility(engine, true);
         let poses = forward_kinematics(state1, robot1);
@@ -344,7 +348,7 @@
         set_robot(engine, robot2, poses);
         state2 = optimization_bfgs(position_loss(target_point, robot2), state2);
 
-        draw_curve(engine, spline, 100);
+        draw_curve(engine, unit_spline, 100);
 
         refresh_displays(gui);
     });
