@@ -124,8 +124,8 @@ export class ThreeEngine {
         //var gridHelper = new THREE.GridHelper(size, divisions);
         //scene.add(gridHelper);
 
-        spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([10.,0.,0.]), false, 0.02, 0xff0000);
-        spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([0.,10.,0.]), false, 0.02, 0x00ff00);
+        //spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([10.,0.,0.]), false, 0.02, 0xff0000);
+        //spawn_line_base(scene, convert_z_up_array_to_y_up_array([0.,0.,0.]), convert_z_up_array_to_y_up_array([0.,10.,0.]), false, 0.02, 0x00ff00);
 
         var stats = new Stats();
         document.body.appendChild(stats.dom);

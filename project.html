@@ -173,14 +173,56 @@
         return f;
     }
 
+    // adapted from https://schinckel.net/2012/01/10/hsv-to-rgb-in-javascript/
+    function hsvToRgb(h, s, v) {
+        let r, g, b, i, f, p, q, t;
+        if (s === 0) {
+            r = g = b = v;
+        } else {
+            h /= 60;
+            i = Math.floor(h);
+            f = h - i;
+            p = v * (1 - s);
+            q = v * (1 - s * f);
+            t = v * (1 - s * (1 - f));
+            switch (i) {
+                case 0:
+                    r = v; g = t; b = p;
+                    break;
+                case 1:
+                    r = q; g = v; b = p;
+                    break;
+                case 2:
+                    r = p; g = v; b = t;
+                    break;
+                case 3:
+                    r = p; g = q; b = v;
+                    break;
+                case 4:
+                    r = t; g = p; b = v;
+                    break;
+                default:
+                    r = v; g = p; b = q;
+            }
+        }
+        return "#" + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+    }
     function draw_curve(engine, parameterization, samples) {
-        let p1, p2;
+        let p1, p2, color;
         for(let i = 0; i < samples - 1; i++) {
             p1 = parameterization(i / samples);
             p2 = parameterization((i + 1) / samples);
-            engine.draw_debug_line(p1, p2, false, 0.01, 0);
+            color = hsvToRgb(i / samples * 360, 1, 1); // Full saturation and value for vivid colors
+            engine.draw_debug_line(p1, p2, false, 0.04, color);
         }
-        engine.draw_debug_line(p2, parameterization(0), false, 0.01, 0);
+        // Draw the final segment to close the loop
+        color = hsvToRgb(1 * 360, 1, 1); // Reset the hue to start for the closing segment
+        engine.draw_debug_line(p2, parameterization(0), false, 0.04, color);
+    }
+
+    function get_tangent(parameterization, t) {
+        const delta = 0.001;
+        return normalized_matrix(sub_matrix_matrix(parameterization(t + delta), parameterization(t)));
     }
 
     // B-spline basis function
@@ -262,7 +304,7 @@
     tge.set_position_of_gizmo(11, [2, 0, 0])
 
     let gui = get_default_lil_gui();
-    gui.add(settings, "t", 0, 1).name("t");
+    gui.add(settings, "t", 0, 3).name("t");
     gui.add(settings, "start", 0, 1).name("Play");
     gui.add(settings, "editing").name("Editing Mode")
     // if you want to use the XArm7 robot:
@@ -281,7 +323,7 @@
     let state2 = [0, 0, 0, 0, 0, 0, 0, 0];
     let t;
     engine.animation_loop( ()  => {
-        engine.draw_debug_sphere([0,0,-1000], 1000.01, 0x137d13, 1, 100);
+        engine.draw_debug_sphere([0,0,-1000], 1000.01, 0x403f3e, 1, 100);
 
         tge.set_visibility_of_all_gizmos(engine, settings.editing);
 
@@ -348,7 +390,7 @@
         set_robot(engine, robot2, poses);
         state2 = optimization_bfgs(position_loss(target_point, robot2), state2);
 
-        draw_curve(engine, unit_spline, 100);
+        draw_curve(engine, unit_spline, 200);
 
         refresh_displays(gui);
     });
